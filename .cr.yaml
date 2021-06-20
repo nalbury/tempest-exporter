@@ -1,0 +1,1 @@
+release-name-template: "chart-release-{{ .Name }}-{{ .Version }}"
