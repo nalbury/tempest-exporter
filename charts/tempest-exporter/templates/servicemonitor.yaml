@@ -8,7 +8,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      {{- include "tempest-exporter.selectorLabels" . | nindent 4 }}
+      {{- include "tempest-exporter.selectorLabels" . | nindent 6 }}
   endpoints:
   - port: metrics
 {{- end }}
