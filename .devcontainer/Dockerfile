@@ -9,6 +9,18 @@ ARG INSTALL_NODE="true"
 ARG NODE_VERSION="lts/*"
 RUN if [ "${INSTALL_NODE}" = "true" ]; then su vscode -c "umask 0002 && . /usr/local/share/nvm/nvm.sh && nvm install ${NODE_VERSION} 2>&1"; fi
 
+ARG KUBECTL_VERSION=1.18.8
+ARG HELM_VERSION=3.5.2
+ARG TARGETARCH
+
+RUN echo "Installing kubectl v$KUBECTL_VERSION" \
+  && curl -L https://dl.k8s.io/release/v$KUBECTL_VERSION/bin/linux/${TARGETARCH}/kubectl \
+  -o /usr/local/bin/kubectl \
+  && echo "Installing helm v$HELM_VERSION" \
+  && curl -L https://get.helm.sh/helm-v$HELM_VERSION-linux-${TARGETARCH}.tar.gz \
+  |tar --strip=1 -xzvf - -C /usr/local/bin/ linux-${TARGETARCH}/helm \
+  && chmod +x /usr/local/bin/*
+
 # [Optional] Uncomment this section to install additional OS packages.
 # RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 #     && apt-get -y install --no-install-recommends <your-package-list-here>

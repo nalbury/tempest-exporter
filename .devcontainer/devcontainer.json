@@ -26,6 +26,7 @@
 	// Add the IDs of extensions you want installed when the container is created.
 	"extensions": [
 		"golang.Go",
+		"ms-kubernetes-tools.vscode-kubernetes-tools",
 		"vscodevim.vim@1.20.3"
 	],
 
