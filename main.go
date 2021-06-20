@@ -9,59 +9,36 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gorilla/handlers"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// apiURL is the base API URL for the weatherflow observations API
 const apiURL = "https://swd.weatherflow.com/swd/rest/observations/station"
+
+// ns is the metric namespace prefix
+const ns = "tempest"
+
+// ss is the metric subsystem prefix
+const ss = "station"
 
 var (
 	// token is our weatherflow API token
 	token = os.Getenv("WEATHERFLOW_API_TOKEN")
+	// station is the station ID we want to query
+	station = os.Getenv("WEATHERFLOW_STATION_ID")
 	// labels is a map of prometheus labels to apply to the metrics retrieved
 	labels     prometheus.Labels
 	labelNames []string
-	// METRICS //
-	// all metrics should be declared here and initialized below in the "init" function
-	air_temperature *prometheus.GaugeVec
+	// metrics is an empty MetricsMap
+	metrics = make(MetricsMap)
 )
 
-func getTempestData(token string) (response, error) {
-	var r response
-	reqURL := apiURL + "/" + "51384" + "?token=" + token
-	httpResp, err := http.Get(reqURL)
-	if err != nil {
-		return r, fmt.Errorf("error getting data from tempest station: %v", err)
-	}
-	defer httpResp.Body.Close()
-	err = json.NewDecoder(httpResp.Body).Decode(&r)
-	if err != nil {
-		return r, fmt.Errorf("error parsing json into response struct: %v", err)
-	}
-	return r, nil
-}
+type logWriter struct{}
 
-func init() {
-	// Initialize labels
-	r, err := getTempestData(token)
-	if err != nil {
-		log.Fatal(err)
-	}
-	labels = r.parseLabels()
-	labelNames = []string{}
-	for k := range labels {
-		labelNames = append(labelNames, k)
-	}
-	// Initialze metrics
-	// TODO see if we can hack this with some reflection?
-	air_temperature = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "air_temperature",
-			Help: "Temperature in Celcius",
-		},
-		labelNames,
-	)
-	prometheus.MustRegister(air_temperature)
+func (l *logWriter) Write(bytes []byte) (int, error) {
+	return fmt.Print(time.Now().Format("02/Jan/2006:15:04:05 -0700") + " [INFO] [exporter]" + string(bytes))
 }
 
 // stationStatus holds our station status code
@@ -121,6 +98,23 @@ type response struct {
 	Obs         []observation `json:"obs"`
 }
 
+// getTempestData retrieves the API response from our Tempest weather station
+func getTempestData(t, s string) (response, error) {
+	var r response
+	reqURL := apiURL + "/" + s + "?token=" + t
+	httpResp, err := http.Get(reqURL)
+	// TODO handle client errors
+	if err != nil {
+		return r, fmt.Errorf("error getting data from tempest station: %v", err)
+	}
+	defer httpResp.Body.Close()
+	err = json.NewDecoder(httpResp.Body).Decode(&r)
+	if err != nil {
+		return r, fmt.Errorf("error parsing json into response struct: %v", err)
+	}
+	return r, nil
+}
+
 // parseLabels returns a list of label values as strings matchingour "labels" var
 func (r *response) parseLabels() prometheus.Labels {
 	l := make(map[string]string)
@@ -134,19 +128,52 @@ func (r *response) parseLabels() prometheus.Labels {
 	return l
 }
 
+// getDatas gets all the datas
 func getDatas() {
-	r, err := getTempestData(token)
+	for {
+		log.Println("getting latest observation...")
+		r, err := getTempestData(token, station)
+		if err != nil {
+			log.Fatal(err)
+		}
+		labels = r.parseLabels()
+		if len(r.Obs) > 0 {
+			o := r.Obs[0]
+			metrics.SetAll(o, labels)
+		}
+		time.Sleep(time.Second * 15)
+	}
+}
+
+func init() {
+	// Setup logger for non req logs
+	log.SetFlags(0)
+	log.SetOutput(new(logWriter))
+
+	// Check config values
+	if token == "" {
+		log.Fatalln("please set WEATHERFLOW_API_TOKEN")
+	}
+	if station == "" {
+		log.Fatalln("please set WEATHERFLOW_STATION_ID")
+	}
+	// Initialize labels
+	r, err := getTempestData(token, station)
 	if err != nil {
 		log.Fatal(err)
 	}
 	labels = r.parseLabels()
-	air_temperature.With(labels).Set(r.Obs[0].AirTemperature)
-	time.Sleep(time.Second * 15)
+	labelNames = []string{}
+	for k := range labels {
+		labelNames = append(labelNames, k)
+	}
+	// Initialze metrics
+	metrics.Register(labelNames)
 }
 
 func main() {
 	go getDatas()
 
-	http.Handle("/metrics", promhttp.Handler())
+	http.Handle("/metrics", handlers.LoggingHandler(os.Stdout, promhttp.Handler()))
 	http.ListenAndServe("0.0.0.0:6969", nil)
 }
