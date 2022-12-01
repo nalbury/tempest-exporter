@@ -28,6 +28,8 @@ var (
 	token = os.Getenv("WEATHERFLOW_API_TOKEN")
 	// station is the station ID we want to query
 	station = os.Getenv("WEATHERFLOW_STATION_ID")
+	// listenPort is the TCP port on which to listen for HTTP requests
+	listenPort = os.Getenv("WEATHERFLOW_LISTEN_PORT")
 	// labels is a map of prometheus labels to apply to the metrics retrieved
 	labels     prometheus.Labels
 	labelNames []string
@@ -157,6 +159,9 @@ func init() {
 	if station == "" {
 		log.Fatalln("please set WEATHERFLOW_STATION_ID")
 	}
+	if listenPort == "" {
+		listenPort = "6969"
+	}
 	// Initialize labels
 	r, err := getTempestData(token, station)
 	if err != nil {
@@ -175,5 +180,5 @@ func main() {
 	go getDatas()
 
 	http.Handle("/metrics", handlers.LoggingHandler(os.Stdout, promhttp.Handler()))
-	http.ListenAndServe("0.0.0.0:6969", nil)
+	http.ListenAndServe(fmt.Sprintf("0.0.0.0:%s", listenPort), nil)
 }
